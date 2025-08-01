@@ -8,6 +8,3 @@ class ApiResponse {
 }
 
 export {ApiResponse};
-
-export const successResponse = (res,data,message) =>{
-}
