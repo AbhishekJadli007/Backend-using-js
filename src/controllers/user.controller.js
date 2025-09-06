@@ -112,8 +112,16 @@ const loginUser = asyncHandler(async (req,res) =>{
     const {email,username,password} = req.body;
 
     if(!username && !email){
-        throw new ApiError(400,"Username or password is required");
+        throw new ApiError(400,"Username or email is required");
     }
+
+    if(!password){
+        throw new ApiError(400,"Password is required");
+    }
+
+    // Convert username to lowercase to match registration
+    const searchUsername = username ? username.toLowerCase() : username;
+
     // what does findOne() do ?
     // it finds the first user that matches the query
     // it returns the user object
@@ -124,12 +132,21 @@ const loginUser = asyncHandler(async (req,res) =>{
 
     // yaha user create kiya but accessToken is not set 
     const user = await User.findOne({
-        $or :[{username},{email}]
-    });
+        $or :[{username: searchUsername},{email}]
+    }).select("+password");
 
     if(!user){
         throw new ApiError(400,"User not found");
     }
+
+    // Debug logging
+    console.log("Login attempt:");
+    console.log("Username/Email:", username || email);
+    console.log("Search username:", searchUsername);
+    console.log("User found:", user.username);
+    console.log("Password provided:", password);
+    console.log("User has password:", !!user.password);
+    console.log("Password length:", user.password ? user.password.length : 0);
 
     //  difference between User and user  ??
     // User is a mongoose model(mongoose ka object hai ) and user
@@ -137,9 +154,10 @@ const loginUser = asyncHandler(async (req,res) =>{
     // other methods like comparePassword yeh sab humare user mein available h) 
     // -> find one sab User mein h yeh mongo ke methods hai 
 
-    const isPasswordCorrect = await user.comparePassword(password);
+    const isPassword = await user.isPasswordCorrect(password);
+    console.log("Password comparison result:", isPassword);
 
-    if(!isPasswordCorrect){
+    if(!isPassword){
         throw new ApiError(400,"Invalid password");
     }
 

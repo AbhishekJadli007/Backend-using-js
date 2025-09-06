@@ -59,7 +59,20 @@ UserSchema.pre("save",async function(next){
 })
 
 UserSchema.methods.isPasswordCorrect = async function(password){
-    return await bcrypt.compare(password,this.password);
+    console.log("isPasswordCorrect called:");
+    console.log("Password provided:", password);
+    console.log("Stored password exists:", !!this.password);
+    console.log("Stored password length:", this.password ? this.password.length : 0);
+    console.log("Stored password starts with:", this.password ? this.password.substring(0, 10) : "N/A");
+    
+    if(!password || !this.password){
+        console.log("Password or stored password is missing");
+        return false;
+    }
+    
+    const result = await bcrypt.compare(password,this.password);
+    console.log("bcrypt.compare result:", result);
+    return result;
 }
 
 UserSchema.methods.generateAccessToken = function(){
