@@ -4,6 +4,24 @@ import {User} from "../models/user.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js";
 import {ApiResponse} from "../utils/apiresponse.js";
 
+const generateAccessandRefreshTokens = async(userId)=>
+{
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+        // store refresh token in database ? why ? -> because we need to send it to the client in the response
+        user.refreshToken = refreshToken;
+        await user.save({validateBeforeSave : false});
+
+        return {accessToken,refreshToken}; 
+    }
+    catch(error){
+        throw new ApiError(500,"Error generating access and refresh tokens");
+    }
+}
+
+
 const registerUser = asyncHandler(async (req,res) =>{
 
     //get user details from frontend  
@@ -57,7 +75,6 @@ const registerUser = asyncHandler(async (req,res) =>{
      
     // create user object -create entry in database
 
-
     const newUser = await User.create({
         fullname,
         avatar : avatar.url,
@@ -84,5 +101,130 @@ const registerUser = asyncHandler(async (req,res) =>{
 
 } )
 
+const loginUser = asyncHandler(async (req,res) =>{
+    // req body se data le aao
+    // username or email check karo 
+    // find the user 
+    // password check karo 
+    // generate access token and refresh token 
+    // send tokens through cookies 
 
-export {registerUser}
+    const {email,username,password} = req.body;
+
+    if(!username && !email){
+        throw new ApiError(400,"Username or password is required");
+    }
+    // what does findOne() do ?
+    // it finds the first user that matches the query
+    // it returns the user object
+    // it returns null if no user is found
+    // it returns an error if the query is invalid
+    // it is a mongoose method
+    // it is a database operation
+
+    // yaha user create kiya but accessToken is not set 
+    const user = await User.findOne({
+        $or :[{username},{email}]
+    });
+
+    if(!user){
+        throw new ApiError(400,"User not found");
+    }
+
+    //  difference between User and user  ??
+    // User is a mongoose model(mongoose ka object hai ) and user
+    //  (humne jo user banaya h uska object hai like email password and 
+    // other methods like comparePassword yeh sab humare user mein available h) 
+    // -> find one sab User mein h yeh mongo ke methods hai 
+
+    const isPasswordCorrect = await user.comparePassword(password);
+
+    if(!isPasswordCorrect){
+        throw new ApiError(400,"Invalid password");
+    }
+
+      // yeh method kya kar raha hai ?? -> generateAccessandRefreshTokens yeh kar raha hai ki 
+     // access token aur refresh token generate karega 
+     // aur refresh token ko database mein store karega 
+     // aur access token aur refresh token ko client mein send karega 
+     // aur client ko access token aur refresh token ko store karega 
+
+    const {accessToken,refreshToken} = await generateAccessandRefreshTokens(user._id);
+
+    // abhi user ke andar refresh token hai woh empty hai ?? because -> when we create a user, we don't set the refresh token
+    // when we generate access and refresh tokens, we set the refresh token in the user object
+    // and then we save the user object in the database
+    // so, when we send the response, we send the user object with the refresh token
+    // so, the client can use the refresh token to get a new access token
+
+
+    const loggedInUser = await User.findById(user._id)
+    .select("-password -refreshToken");  // password and refreshToken ko remove karega .select mein jo cheez nahi chahiye woh dalte h 
+
+
+    // cookies ke options set kar rahe h 
+    const options = {
+        httpOnly : true, // ab sirf server se access karna hai 
+        secure : true    
+    }
+
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken,options)
+    .cookie("refreshToken",refreshToken,options)
+    .json(
+        new ApiResponse(200,
+            {
+                user : loggedInUser,
+                accessToken,
+                refreshToken
+            },
+            "User logged in successfully"
+        )
+    )
+
+})
+
+
+
+const logoutUser = asyncHandler(async (req,res) =>{
+
+    // sabse pehle -> cookies clear karo and jo accessToken and refreshToken token ko reset karna hoga 
+    // req body se data le aao
+    // ab logout ke time findbyId use nahi kar sakte -> we have to create a custom middleware jaise cookie parser ka middleware add kiya h toh hum loggedinuser mein res.cookie use kar rahe the (refer loginUser above) and hum req.cookie bhi use kar skate h waise hi ek custom middleware bana kar usse bhi req and res mein use karenge user details fetch karne ke liye taaki logout ke time wapas koi form na bharana ho ...
+    // find the user 
+    // set refresh token to empty string 
+    // save the user 
+    // send response 
+
+    const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set :{
+                refreshToken : undefined
+            }
+        },
+        {
+            new : true
+        }
+    )
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken",options)
+    .clearCookie("RefreshToken",options)
+    .json(
+        new ApiResponse(200,{},"User logged out successfully")
+    )
+
+})
+
+export {
+    registerUser,
+    loginUser,
+    logoutUser
+}
